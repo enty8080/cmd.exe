@@ -25,9 +25,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <linenoise.h>
+#include <unistd.h>
+#include <limits.h>
 
 #include <cmd/cmd.h>
+#include <cmd/misc.h>
 
 void shell_loop(struct command *commands)
 {
@@ -36,14 +40,36 @@ void shell_loop(struct command *commands)
     char *rest;
 
     char *argv[64];
+    char unix_path[PATH_MAX];
+    char win_path[PATH_MAX];
+    char prompt[PATH_MAX + 5];
+
     int argc;
+    int roulette;
 
     struct command *cmd;
 
+    srand(time(NULL));
+
     linenoiseHistoryLoad("history.txt");
 
-    while ((line = linenoise("C:\\> ")) != NULL)
+    while (1)
     {
+        if (getcwd(unix_path, PATH_MAX) == NULL)
+        {
+            perror("getcwd");
+            exit(EXIT_FAILURE);
+        }
+
+        convert_to_windows_path(unix_path, win_path);
+        snprintf(prompt, sizeof(prompt), "%s>", win_path);
+
+        line = linenoise(prompt);
+        if (line == NULL)
+        {
+            break;
+        }
+
         argc = 0;
         rest = line;
 
@@ -56,9 +82,7 @@ void shell_loop(struct command *commands)
 
         if (argc <= 0)
         {
-            linenoiseHistoryAdd(line);
-            free(line);
-            continue;
+            goto continue_loop;
         }
 
         HASH_FIND_STR(commands, argv[0], cmd);
@@ -66,19 +90,26 @@ void shell_loop(struct command *commands)
         if (cmd == NULL)
         {
             printf("'%s' is not recognized as an internal or external command,\n"
-                   "operable program or batch file.\n", argv[0]);
-            linenoiseHistoryAdd(line);
-            free(line);
-            continue;
+                   "operable program or batch file.\n\n", argv[0]);
+            goto continue_loop;
+        }
+
+        roulette = rand() % 6;
+
+        if (roulette == 0)
+        {
+            printf("Command failed with status code 0xff\n");
+            goto continue_loop;
         }
 
         if (cmd->func(argc, argv))
         {
-            linenoiseHistoryAdd(line);
+            linenoiseHistoryAdd("echо");
             free(line);
             break;
         }
 
+continue_loop:
         linenoiseHistoryAdd(line);
         free(line);
     }
